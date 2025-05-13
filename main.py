@@ -19,7 +19,7 @@ from utils.event_manager import EventManager
 class Reminder(PluginBase):
     description = "备忘录插件"
     author = "sofs2005"
-    version = "2.0.0"  # 更新版本号
+    version = "2.0.1"  # 更新版本号
 
     def __init__(self):
         super().__init__()
@@ -203,10 +203,8 @@ class Reminder(PluginBase):
             )
 
             try:
-                if is_group_chat:
-                    await bot.send_at_message(chat_id, help_message, [wxid])
-                else:
-                    await bot.send_text_message(chat_id, help_message)
+                at_list = [wxid] if is_group_chat else None
+                await self._send_message(bot, chat_id, help_message, at_list)
                 logger.info(f"向用户 {wxid} 发送帮助信息")
             except Exception as e:
                 logger.error(f"发送帮助信息失败: {e}")
@@ -218,10 +216,8 @@ class Reminder(PluginBase):
                 parts = info.split(maxsplit=2)
                 if len(parts) < 2:
                     error_msg = "\n参数错误！请使用：记录 [时间/周期] [内容]"
-                    if is_group_chat:
-                        await bot.send_at_message(chat_id, error_msg, [wxid])
-                    else:
-                        await bot.send_text_message(chat_id, error_msg)
+                    at_list = [wxid] if is_group_chat else None
+                    await self._send_message(bot, chat_id, error_msg, at_list)
                     return False
 
                 time_period_str = parts[0]
@@ -261,10 +257,8 @@ class Reminder(PluginBase):
                         # 如果时间已经过去，则设置为明天
                         if next_time < now:
                             error_msg = "\n指定的时间已经过去，请重新设置"
-                            if is_group_chat:
-                                await bot.send_at_message(chat_id, error_msg, [wxid])
-                            else:
-                                await bot.send_text_message(chat_id, error_msg)
+                            at_list = [wxid] if is_group_chat else None
+                            await self._send_message(bot, chat_id, error_msg, at_list)
                             return False
                         reminder_time = next_time.strftime('%Y-%m-%d %H:%M:%S')
                     else:
@@ -286,10 +280,8 @@ class Reminder(PluginBase):
                         reminder_time = next_time.strftime('%Y-%m-%d %H:%M:%S')
                     else:
                         error_msg = "\n时间格式错误！请使用：明天 HH:MM 格式"
-                        if is_group_chat:
-                            await bot.send_at_message(chat_id, error_msg, [wxid])
-                        else:
-                            await bot.send_text_message(chat_id, error_msg)
+                        at_list = [wxid] if is_group_chat else None
+                        await self._send_message(bot, chat_id, error_msg, at_list)
                         return False
                 elif "后天" in time_period_str:
                     reminder_type = "one_time"
@@ -303,10 +295,8 @@ class Reminder(PluginBase):
                         reminder_time = next_time.strftime('%Y-%m-%d %H:%M:%S')
                     else:
                         error_msg = "\n时间格式错误！请使用：后天 HH:MM 格式"
-                        if is_group_chat:
-                            await bot.send_at_message(chat_id, error_msg, [wxid])
-                        else:
-                            await bot.send_text_message(chat_id, error_msg)
+                        at_list = [wxid] if is_group_chat else None
+                        await self._send_message(bot, chat_id, error_msg, at_list)
                         return False
                 elif re.match(r"^\d{2}:\d{2}$", time_period_str):
                     reminder_type = "daily"
@@ -510,10 +500,8 @@ class Reminder(PluginBase):
             help_message += " - 例如: 记录 每周一 9:00 帮我总结上周工作 (将触发AI回复)\n\n"
             help_message += "📋管理提醒:\n - 我的记录 (查看所有提醒)\n - 删除 序号 (取消单个提醒)\n"
             help_message += " - 删除 全部 (取消所有提醒)\n - 记录帮助 (查看帮助信息)"
-            if is_group_chat:
-                await bot.send_at_message(chat_id, help_message, [wxid])
-            else:
-                await bot.send_text_message(chat_id, help_message)
+            at_list = [wxid] if is_group_chat else None
+            await self._send_message(bot, chat_id, help_message, at_list)
             return False
 
         return True
@@ -572,7 +560,7 @@ class Reminder(PluginBase):
             except Exception as e:
                 logger.exception(f"处理用户 {wxid} 的提醒时出错: {e}")
 
-    async def send_reminder(self, bot: WechatAPIClient, wxid: str, content: str, reminder_id: int, chat_id: str):
+    async def send_reminder(self, bot, wxid: str, content: str, reminder_id: int, chat_id: str):
         try:
             # 检查内容是否以"提醒"开头，如果是则作为简单提醒发送
             if content.startswith("提醒"):
@@ -585,10 +573,13 @@ class Reminder(PluginBase):
                 # 对于所有其他提醒，模拟用户发送消息给机器人
                 logger.info(f"模拟用户发送消息: {content}")
                 try:
+                    # 获取机器人的 wxid
+                    bot_wxid = bot.wxid if hasattr(bot, 'wxid') else (bot.bot.wxid if hasattr(bot, 'bot') and hasattr(bot.bot, 'wxid') else "")
+
                     # 构造一个消息事件
                     simulated_message = {
                         "MsgId": str(int(time.time() * 1000)),
-                        "ToWxid": bot.wxid,  # 机器人的 wxid
+                        "ToWxid": bot_wxid,  # 机器人的 wxid
                         "MsgType": 1,  # 文本消息
                         "Content": content,
                         "Status": 3,
@@ -620,53 +611,98 @@ class Reminder(PluginBase):
             except Exception as e2:
                 logger.error(f"发送普通提醒也失败: {e2}")
 
-    async def _send_simple_reminder(self, bot: WechatAPIClient, wxid: str, content: str, reminder_id: int, chat_id: str):
+    async def _send_simple_reminder(self, bot, wxid: str, content: str, reminder_id: int, chat_id: str):
         """使用模板发送简单提醒消息"""
         try:
-            nickname = await bot.get_nickname(wxid)
-            if not nickname:
-                nickname = "用户"
+            # 获取用户昵称
+            nickname = await self._get_nickname(bot, wxid)
+
+            # 使用配置中的模板创建格式化的提醒消息
+            current_time = datetime.now().strftime('%Y-%m-%d %H:%M')
+            output = self.simple_reminder_template.format(content=content, time=current_time, nickname=nickname)
+
+            # 发送提醒
+            is_group_chat = chat_id.endswith("@chatroom")
+            at_list = [wxid] if is_group_chat else None
+            await self._send_message(bot, chat_id, output, at_list)
         except Exception as e:
-            logger.error(f"获取用户 {wxid} 昵称失败: {e}")
-            nickname = "用户"
+            logger.error(f"发送简单提醒失败: {e}")
 
-        # 使用配置中的模板创建格式化的提醒消息
-        current_time = datetime.now().strftime('%Y-%m-%d %H:%M')
-        output = self.simple_reminder_template.format(content=content, time=current_time, nickname=nickname)
-
-        # 发送提醒
-        if chat_id.endswith("@chatroom"):
-            await bot.send_at_message(chat_id, output, [wxid])
-        else:
-            await bot.send_text_message(chat_id, output)
-
-    async def _send_normal_reminder(self, bot: WechatAPIClient, wxid: str, content: str, reminder_id: int, chat_id: str):
+    async def _send_normal_reminder(self, bot, wxid: str, content: str, reminder_id: int, chat_id: str):
         """发送普通提醒消息"""
         try:
-            nickname = await bot.get_nickname(wxid)
+            # 只发送实际内容，不包含其他描述文字
+            output = content
+
+            # 发送消息
+            await self._send_message(bot, chat_id, output)
+        except Exception as e:
+            logger.error(f"发送普通提醒失败: {e}")
+
+    async def _send_message(self, bot, chat_id: str, content: str, at_list: list = None):
+        """通用的消息发送函数，处理不同类型的 bot 对象"""
+        is_group_chat = chat_id.endswith("@chatroom")
+        try:
+            if is_group_chat and at_list:
+                # 如果 bot 是 WechatAPIClient 类型
+                if hasattr(bot, 'send_at_message'):
+                    await bot.send_at_message(chat_id, content, at_list)
+                # 如果 bot 是 XYBot 类型，它有一个 bot 属性是 WechatAPIClient 类型
+                elif hasattr(bot, 'bot') and hasattr(bot.bot, 'send_at_message'):
+                    await bot.bot.send_at_message(chat_id, content, at_list)
+                else:
+                    # 尝试使用 send_text 方法
+                    if hasattr(bot, 'send_text'):
+                        await bot.send_text(chat_id, content)
+                    elif hasattr(bot, 'bot') and hasattr(bot.bot, 'send_text'):
+                        await bot.bot.send_text(chat_id, content)
+                    else:
+                        logger.error(f"无法发送群聊消息，bot 对象不支持 send_at_message 或 send_text 方法")
+            else:
+                # 如果 bot 是 WechatAPIClient 类型
+                if hasattr(bot, 'send_text_message'):
+                    await bot.send_text_message(chat_id, content)
+                # 如果 bot 是 XYBot 类型，它有一个 bot 属性是 WechatAPIClient 类型
+                elif hasattr(bot, 'bot') and hasattr(bot.bot, 'send_text_message'):
+                    await bot.bot.send_text_message(chat_id, content)
+                # 尝试使用 send_text 方法
+                elif hasattr(bot, 'send_text'):
+                    await bot.send_text(chat_id, content)
+                elif hasattr(bot, 'bot') and hasattr(bot.bot, 'send_text'):
+                    await bot.bot.send_text(chat_id, content)
+                else:
+                    logger.error(f"无法发送消息，bot 对象不支持 send_text_message 或 send_text 方法")
+            return True
+        except Exception as e:
+            logger.error(f"发送消息失败: {e}")
+            return False
+
+    async def _get_nickname(self, bot, wxid: str) -> str:
+        """通用的获取昵称函数，处理不同类型的 bot 对象"""
+        try:
+            # 如果 bot 是 WechatAPIClient 类型
+            if hasattr(bot, 'get_nickname'):
+                nickname = await bot.get_nickname(wxid)
+            # 如果 bot 是 XYBot 类型，它有一个 bot 属性是 WechatAPIClient 类型
+            elif hasattr(bot, 'bot') and hasattr(bot.bot, 'get_nickname'):
+                nickname = await bot.bot.get_nickname(wxid)
+            else:
+                nickname = "用户"
+
             if not nickname:
                 nickname = "用户"
+            return nickname
         except Exception as e:
             logger.error(f"获取用户 {wxid} 昵称失败: {e}")
-            nickname = "用户"
+            return "用户"
 
-        # 只发送实际内容，不包含其他描述文字
-        output = content
-
-        # 不再使用@消息，直接发送普通文本消息
-        await bot.send_text_message(chat_id, output)
-
-    async def _check_point(self, bot: WechatAPIClient, message: dict) -> bool:
+    async def _check_point(self, bot, message: dict) -> bool:
         wxid = message["SenderWxid"]
         chat_id = message["FromWxid"]
         is_group_chat = chat_id.endswith("chatroom")
-        try:
-            nickname = await bot.get_nickname(wxid)
-            if not nickname:
-                nickname = "用户"
-        except Exception as e:
-            logger.error(f"获取用户 {wxid} 昵称失败: {e}")
-            nickname = "用户"
+
+        # 尝试获取用户昵称
+        nickname = await self._get_nickname(bot, wxid)
 
         if wxid in self.admins and self.admin_ignore:
             return True
@@ -675,10 +711,10 @@ class Reminder(PluginBase):
         else:
             if self.db.get_points(wxid) < self.price:
                 error_msg = f"\n😭-----XXXBOT-----\n你的积分不够啦！需要 {self.price} 积分"
-                if is_group_chat:
-                    await bot.send_at_message(chat_id, error_msg, [wxid])
-                else:
-                    await bot.send_text_message(chat_id, error_msg)
+
+                # 发送消息
+                at_list = [wxid] if is_group_chat else None
+                await self._send_message(bot, chat_id, error_msg, at_list)
                 return False
             self.db.add_points(wxid, -self.price)
             return True
