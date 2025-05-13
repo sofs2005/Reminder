@@ -19,7 +19,7 @@ from utils.event_manager import EventManager
 class Reminder(PluginBase):
     description = "备忘录插件"
     author = "sofs2005"
-    version = "2.0.1"  # 更新版本号
+    version = "2.0.2"  # 更新版本号
 
     def __init__(self):
         super().__init__()
@@ -596,8 +596,13 @@ class Reminder(PluginBase):
                         "Ats": []
                     }
 
+                    # 确保使用正确类型的 bot 对象
+                    # 如果 bot 是 XYBot 类型，使用 bot.bot (WechatAPIClient 类型)
+                    # 否则直接使用 bot
+                    actual_bot = bot.bot if hasattr(bot, 'bot') else bot
+
                     # 触发文本消息事件
-                    await EventManager.emit("text_message", bot, simulated_message)
+                    await EventManager.emit("text_message", actual_bot, simulated_message)
                     logger.info(f"成功模拟用户消息: {content}")
                 except Exception as e:
                     logger.error(f"模拟用户消息失败: {e}")
