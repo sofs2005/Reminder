@@ -19,7 +19,7 @@ from utils.event_manager import EventManager
 class Reminder(PluginBase):
     description = "备忘录插件"
     author = "sofs2005"
-    version = "2.0.2"  # 更新版本号
+    version = "2.0.3"  # 更新版本号
 
     def __init__(self):
         super().__init__()
@@ -754,11 +754,21 @@ class Reminder(PluginBase):
 
             elif reminder_type == "weekly":
                 weekday, time_str = reminder_time.split()
-                weekday = int(weekday)
+                weekday = int(weekday) - 1  # 将1-7的表示转换为0-6的表示
+                if weekday < 0:  # 处理周日的特殊情况
+                    weekday = 6
                 hour, minute = map(int, time_str.split(":"))
+
+                # 先计算今天的目标时间点
+                target_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+                # 计算天数差
                 days_ahead = weekday - now.weekday()
-                if days_ahead <= 0:
+
+                # 如果是今天但时间已过，或者目标星期几已过，则设置为下一周
+                if (days_ahead == 0 and target_time <= now) or days_ahead < 0:
                     days_ahead += 7
+
                 next_time = now + timedelta(days=days_ahead)
                 return next_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
